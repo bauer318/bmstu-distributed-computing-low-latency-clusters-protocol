@@ -219,7 +219,7 @@ public class SecureClusterNode {
                 1,
                 serializedPublicKey,
                 role,
-                signPacket("TRUST_REQUEST", "BROADCAST", 1, serializedPublicKey)
+                signPacket("TRUST_RESPONSE", "BROADCAST", 1, serializedPublicKey)
         );
         sendPacket(trustRequest, targetAddress, targetPort);
     }
