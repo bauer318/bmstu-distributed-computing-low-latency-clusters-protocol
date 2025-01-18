@@ -4,11 +4,10 @@ import java.io.*;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.PublicKey;
-import java.security.Signature;
+import java.security.*;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -19,8 +18,12 @@ public class SecureClusterNode {
     private final int port;
     private final DatagramSocket socket;
     private final String role;
-    private final KeyPair keyPair; // For authentication
-    private final Map<String, PublicKey> trustedNodes = new ConcurrentHashMap<>(); // Authorized node public keys
+    // For authentication
+    private final KeyPair keyPair;
+    // Authorized node public keys
+    private final Map<String, PublicKey> trustedNodes = new ConcurrentHashMap<>();
+
+    private static final String KEY_MATERIAL = "DSA";
 
     public SecureClusterNode(String nodeId, int port, String clusterIp, String role) throws Exception {
         this.nodeId = nodeId;
@@ -29,19 +32,25 @@ public class SecureClusterNode {
         this.clusterAddress = InetAddress.getByName(clusterIp);
         this.socket = new DatagramSocket(port);
         this.keyPair = generateKeyPair();
-
-       // Add trusted nodes (mock example)
-        assert keyPair != null;
-        trustedNodes.put("Node-1", keyPair.getPublic());
-        trustedNodes.put("Node-2", keyPair.getPublic());
     }
 
     public void start() {
-        System.out.println("Secure Node " + nodeId + " started on port " + port + " cluster address "+clusterAddress);
-
+        System.out.println("Secure Node " + nodeId + " started on port " + port + " cluster address " + clusterAddress);
+        if(!this.role.equals("Coordinator")){
+            try {
+                doHandShakeWithCoordinatorNode();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
         Executors.newSingleThreadExecutor().execute(this::listenForPackets);
     }
 
+    private void doHandShakeWithCoordinatorNode() throws Exception {
+        //Assume that all nodes are on unique cluster and
+        //the Coordinator's node port is 5001
+        sendTrustRequest(this.clusterAddress,5001);
+    }
     private void listenForPackets() {
         byte[] buffer = new byte[2048];
         while (true) {
@@ -50,7 +59,12 @@ public class SecureClusterNode {
                 socket.receive(datagramPacket);
 
                 ProtocolPacket receivedPacket = deserialize(datagramPacket.getData());
-                if (verifyPacket(receivedPacket)) {
+                if (receivedPacket.messageType().equals("TRUST_REQUEST")) {
+                    handleTrustRequest(receivedPacket, datagramPacket.getAddress(), datagramPacket.getPort());
+                }else if(receivedPacket.messageType().equals("TRUST_RESPONSE")){
+                    handleTrustResponse(receivedPacket, datagramPacket.getAddress(), datagramPacket.getPort());
+                }
+                else if (verifyPacket(receivedPacket)) {
                     handlePacket(receivedPacket);
                 } else {
                     System.out.println("Invalid packet signature from " + receivedPacket.senderId());
@@ -59,6 +73,39 @@ public class SecureClusterNode {
                 e.printStackTrace();
             }
         }
+    }
+
+    private void handleTrustRequest(ProtocolPacket packet, InetAddress senderAddress, int senderPort)
+            throws Exception {
+        System.out.println("Received trust request from: " + packet.senderId());
+
+        // Extract the sender's public key from the payload
+        byte[] encodedKey = packet.payload().getBytes();
+        PublicKey senderKey = deserializePublicKey(encodedKey);
+
+        // Add the sender's key to the trustedNodes map
+        trustedNodes.put(packet.senderId(), senderKey);
+        System.out.println("Added " + packet.senderId() + " to trusted nodes.");
+
+        //Respond the sender with the public key
+        sendTrustResponse(senderAddress, senderPort);
+    }
+
+    private void handleTrustResponse(ProtocolPacket packet, InetAddress senderAddress, int senderPort)
+            throws Exception {
+        System.out.println("Received trust response from: " + packet.senderId());
+
+        byte[] encodedKey = packet.payload().getBytes();
+        PublicKey senderKey = deserializePublicKey(encodedKey);
+
+        // Add the sender's key to the trustedNodes map
+        trustedNodes.put(packet.senderId(), senderKey);
+        System.out.println("Added " + packet.senderId() + " to trusted nodes.");
+
+        // Send acknowledgment
+        ProtocolPacket responsePacket = createPacket("TRUST_ACK", packet.senderId(),
+                0, "Trust established");
+        sendPacket(responsePacket, senderAddress, senderPort);
     }
 
     private void handlePacket(ProtocolPacket packet) {
@@ -73,9 +120,11 @@ public class SecureClusterNode {
 
     private boolean verifyPacket(ProtocolPacket packet) throws Exception {
         PublicKey senderKey = trustedNodes.get(packet.senderId());
-        if (senderKey == null) return false;
+        if (senderKey == null) {
+            return false;
+        }
 
-        Signature signature = Signature.getInstance("SHA256withRSA");
+        Signature signature = Signature.getInstance(KEY_MATERIAL);
         signature.initVerify(senderKey);
         signature.update(packetToBytes(packet));
         return signature.verify(packet.signature());
@@ -97,7 +146,7 @@ public class SecureClusterNode {
     }
 
     private byte[] signPacket(String messageType, String targetId, int priority, String payload) throws Exception {
-        Signature signature = Signature.getInstance("SHA256withRSA");
+        Signature signature = Signature.getInstance(KEY_MATERIAL);
         signature.initSign(keyPair.getPrivate());
         signature.update(packetToBytes(new ProtocolPacket(messageType, nodeId, targetId, priority, payload,
                 role, null)));
@@ -118,8 +167,8 @@ public class SecureClusterNode {
     }
 
     private KeyPair generateKeyPair() throws Exception {
-        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
-        keyGen.initialize(2048);
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance(KEY_MATERIAL);
+        keyGen.initialize(1024);
         return keyGen.generateKeyPair();
     }
 
@@ -133,7 +182,8 @@ public class SecureClusterNode {
         }
     }
 
-    private void sendPacket(ProtocolPacket packet, InetAddress targetAddress, int targetPort) throws IOException {
+    private void sendPacket(ProtocolPacket packet, InetAddress targetAddress, int targetPort)
+            throws IOException {
         // Serialize the packet into bytes
         byte[] data = packetToBytes(packet);
 
@@ -145,5 +195,44 @@ public class SecureClusterNode {
 
         System.out.println("Packet sent to " + targetAddress + ":" + targetPort + " | Packet: " + packet);
     }
+
+    public void sendTrustRequest(InetAddress targetAddress, int targetPort) throws Exception {
+        String serializedPublicKey = serializePublicKey(keyPair.getPublic());
+        ProtocolPacket trustRequest = new ProtocolPacket(
+                "TRUST_REQUEST",
+                nodeId,
+                "BROADCAST",
+                1,
+                serializedPublicKey, // Store the serialized key as payload
+                role,
+                signPacket("TRUST_REQUEST", "BROADCAST", 1, serializedPublicKey)
+        );
+        sendPacket(trustRequest, targetAddress, targetPort);
+    }
+
+    private void sendTrustResponse(InetAddress targetAddress, int targetPort) throws Exception {
+        String serializedPublicKey = serializePublicKey(keyPair.getPublic());
+        ProtocolPacket trustRequest = new ProtocolPacket(
+                "TRUST_RESPONSE",
+                nodeId,
+                "BROADCAST",
+                1,
+                serializedPublicKey,
+                role,
+                signPacket("TRUST_REQUEST", "BROADCAST", 1, serializedPublicKey)
+        );
+        sendPacket(trustRequest, targetAddress, targetPort);
+    }
+
+    public static String serializePublicKey(PublicKey publicKey) {
+        return Base64.getEncoder().encodeToString(publicKey.getEncoded());
+    }
+
+    public static PublicKey deserializePublicKey(byte[] encodedKey) throws Exception {
+        byte[] decodedKey = Base64.getDecoder().decode(encodedKey);
+        KeyFactory keyFactory = KeyFactory.getInstance(KEY_MATERIAL);
+        return keyFactory.generatePublic(new X509EncodedKeySpec(decodedKey));
+    }
+
 
 }

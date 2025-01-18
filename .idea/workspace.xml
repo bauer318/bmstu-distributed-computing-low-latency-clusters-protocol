@@ -4,14 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c0825e4d-533c-4f3c-aa6e-b0ea362ccfba" name="Changes" comment="Init">
-      <change afterPath="$PROJECT_DIR$/.idea/uiDesigner.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/bmstu/kibamba/ProtocolPacket.java" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main/java/bmstu/kibamba/SecureClusterNode.java" afterDir="false" />
+    <list default="true" id="c0825e4d-533c-4f3c-aa6e-b0ea362ccfba" name="Changes" comment="core logic done. let add a dynamic trusted nodes mechanism">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/bmstu/kibamba/App.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/bmstu/kibamba/Runner.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/bmstu/kibamba/Runner.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/bmstu/kibamba/Runner.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/bmstu/kibamba/SecureClusterNode.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/bmstu/kibamba/SecureClusterNode.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -79,7 +75,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1737190365560</updated>
-      <workItem from="1737190368260" duration="11138000" />
+      <workItem from="1737190368260" duration="24194000" />
     </task>
     <task id="LOCAL-00001" summary="Init">
       <created>1737190772355</created>
@@ -95,7 +91,14 @@
       <option name="project" value="LOCAL" />
       <updated>1737190794232</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="core logic done. let add a dynamic trusted nodes mechanism">
+      <created>1737209094110</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1737209094110</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -114,15 +117,16 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Init" />
-    <option name="LAST_COMMIT_MESSAGE" value="Init" />
+    <MESSAGE value="core logic done. let add a dynamic trusted nodes mechanism" />
+    <option name="LAST_COMMIT_MESSAGE" value="core logic done. let add a dynamic trusted nodes mechanism" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="java-line">
           <url>file://$PROJECT_DIR$/src/main/java/bmstu/kibamba/SecureClusterNode.java</url>
-          <line>33</line>
-          <option name="timeStamp" value="2" />
+          <line>121</line>
+          <option name="timeStamp" value="8" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

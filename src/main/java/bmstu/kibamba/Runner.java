@@ -1,9 +1,9 @@
 package bmstu.kibamba;
 
+import java.net.InetAddress;
 import java.util.Scanner;
 
 public class Runner {
-
     public static void main(String[] args) {
         String _nodeId = "node-1";
         int _port = 5001;
@@ -12,6 +12,7 @@ public class Runner {
         try{
             SecureClusterNode node = new SecureClusterNode(_nodeId, _port, _clusterIp, _role);
             node.start();
+            //node.sendTrustRequest(InetAddress.getByName(_clusterIp),5002);
             //node.sendTestPackets();
         }catch (Exception ex){
             ex.printStackTrace();
