@@ -36,4 +36,24 @@ public class Utils {
         objectOutputStream.writeObject(packet);
         return arrayOutputStream.toByteArray();
     }
+
+    public static String resolvePacketTask(String packetTask){
+        String[] packetTaskSplit = packetTask.split(",");
+        String result = "r_"+packetTaskSplit[0];
+        int firstOperand = Integer.parseInt(packetTaskSplit[1]);
+        int secondOperand = Integer.parseInt(packetTaskSplit[2]);
+        String operation = packetTaskSplit[3];
+        int resultInt = switch (operation) {
+            case ("+") -> firstOperand + secondOperand;
+            case ("-") -> firstOperand - secondOperand;
+            default -> 0;
+        };
+        result += ","+resultInt;
+        return result;
+    }
+
+    public static int getPortByNodeId(String nodeId){
+        return 5000+Integer.parseInt(nodeId.substring(nodeId.length()-1));
+    }
+
 }

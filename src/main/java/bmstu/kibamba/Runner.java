@@ -12,8 +12,28 @@ public class Runner {
         try{
             SecureClusterNode node = new SecureClusterNode(_nodeId, _port, _clusterIp, _role);
             node.start();
-            //node.sendTrustRequest(InetAddress.getByName(_clusterIp),5002);
-            //node.sendTestPackets();
+            Scanner sc = new Scanner(System.in);
+            boolean canStop = false;
+            String task = null;
+            while(!canStop){
+                System.out.println("1. Add task");
+                System.out.println("2. Solve task");
+                System.out.println("0. Stop");
+                String choose = sc.nextLine();
+
+                switch (choose){
+                    case "1"->{
+                        System.out.println(" Task ");
+                        task = sc.nextLine();
+                    }
+                    case "2"->{
+                        if(task!= null && !task.isBlank()){
+                            node.addTaskToResolve(task);
+                        }
+                    }
+                    case "0"-> canStop = true;
+                }
+            }
         }catch (Exception ex){
             ex.printStackTrace();
         }
