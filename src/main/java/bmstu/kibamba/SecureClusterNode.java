@@ -230,13 +230,6 @@ public class SecureClusterNode {
                 MessageTypeEnum.HEARTBEAT_REQUEST, 0);
     }
 
-    private void sendStateResponse(InetAddress targetAddress, int targetPort, String targetNodeId) throws Exception {
-        ProtocolPacket stateResponse =
-                createUnsignedPacket(MessageTypeEnum.STATE_RESPONSE, targetNodeId, 1,
-                        state.toString(), nodeId, role);
-        sendPacket(stateResponse, targetAddress, targetPort);
-    }
-
     private void handleTrustRequest(ProtocolPacket packet, InetAddress senderAddress, int senderPort)
             throws Exception {
         System.out.println("Received trust request from: " + packet.senderId());
@@ -253,15 +246,6 @@ public class SecureClusterNode {
         //sendTrustResponse(senderAddress, senderPort);
         String serializedPublicKey = serializePublicKey(keyPair.getPublic());
         sendRequestResponse(senderAddress, senderPort, packet.senderId(), serializedPublicKey, MessageTypeEnum.TRUST_RESPONSE, 1);
-    }
-
-    private void sendTrustResponse(InetAddress targetAddress, int targetPort) throws Exception {
-        String serializedPublicKey = serializePublicKey(keyPair.getPublic());
-        ProtocolPacket trustRequest =
-                createUnsignedPacket(
-                        MessageTypeEnum.TRUST_RESPONSE, "BROADCAST", 1, serializedPublicKey, nodeId, role
-                );
-        sendPacket(trustRequest, targetAddress, targetPort);
     }
 
     public void sendTrustRequest(InetAddress targetAddress, int targetPort) throws Exception {
@@ -336,30 +320,6 @@ public class SecureClusterNode {
                         payload, nodeId, role);
         sendPacket(taskRequest, targetAddress, targetPort);
     }
-
-    private void sendTaskRequest(InetAddress targetAddress, int targetPort, String targetNodeId, String task)
-            throws Exception {
-        ProtocolPacket taskRequest =
-                createUnsignedPacket(MessageTypeEnum.TASK, targetNodeId, 0,
-                        task, nodeId, role);
-        sendPacket(taskRequest, targetAddress, targetPort);
-    }
-
-    private void sendTaskResponse(InetAddress targetAddress, int targetPort, String targetNodeId, String taskResult)
-            throws Exception {
-        ProtocolPacket taskResponse =
-                createUnsignedPacket(MessageTypeEnum.TASK, targetNodeId, 0,
-                        taskResult, nodeId, role);
-        sendPacket(taskResponse, targetAddress, targetPort);
-    }
-
-    private void sendStateRequest(InetAddress targetAddress, int targetPort, String targetNodeId) throws Exception {
-        ProtocolPacket stateRequest =
-                createUnsignedPacket(MessageTypeEnum.STATE_REQUEST, targetNodeId, 1,
-                        null, nodeId, role);
-        sendPacket(stateRequest, targetAddress, targetPort);
-    }
-
 
     public static String serializePublicKey(PublicKey publicKey) {
         return Base64.getEncoder().encodeToString(publicKey.getEncoded());
