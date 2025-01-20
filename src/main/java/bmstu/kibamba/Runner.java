@@ -8,7 +8,7 @@ public class Runner {
         String _nodeId = "node-1";
         int _port = 5001;
         String _clusterIp = "127.0.0.1";
-        String _role = "Coordinator";
+        NodeRoleEnum _role = NodeRoleEnum.COORDINATOR;
         try{
             SecureClusterNode node = new SecureClusterNode(_nodeId, _port, _clusterIp, _role);
             node.start();

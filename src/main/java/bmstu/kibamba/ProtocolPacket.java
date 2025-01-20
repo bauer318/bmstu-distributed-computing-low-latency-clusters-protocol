@@ -10,8 +10,8 @@ import java.io.Serializable;
  * @param role        Coordinator, Worker, Monitor
  * @param signature   For authentication
  */
-public record ProtocolPacket(String messageType, String senderId, String targetId, int priority, String payload,
-                             String role, byte[] signature) implements Serializable {
+public record ProtocolPacket(MessageTypeEnum messageType, String senderId, String targetId, int priority, String payload,
+                             NodeRoleEnum role, String signature) implements Serializable {
     @Serial
     private static final long serialVersionUID = 1L;
 
