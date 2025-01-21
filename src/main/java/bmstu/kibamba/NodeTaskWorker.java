@@ -96,7 +96,9 @@ public class NodeTaskWorker {
         return firstOthersNonDividedOperandsIndex <= taskElementCount - 1;
     }
 
-    private static void tryToAddRestInputTaskOperands(String[] inputTaskSplit, StringBuilder result, NodeTask lastNodeTaskWithMaxKey) {
+    private static void tryToAddRestInputTaskOperands(String[] inputTaskSplit,
+                                                      StringBuilder result,
+                                                      NodeTask lastNodeTaskWithMaxKey) {
         int lastNodeTaskWithMaxIdRightTaskOrderId = lastNodeTaskWithMaxKey.getRightTaskOrderId();
         int firstOthersNonDividedOperandsIndex = lastNodeTaskWithMaxIdRightTaskOrderId + 2;
         if (existsOthersOperandOutOf(firstOthersNonDividedOperandsIndex, inputTaskSplit.length)) {
