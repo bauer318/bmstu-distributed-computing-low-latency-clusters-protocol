@@ -11,7 +11,7 @@ public enum MessageTypeEnum {
     STATE_REQUEST((byte)5),
     STATE_RESPONSE((byte)6);
     
-    private MessageTypeEnum(byte messageType){
+    MessageTypeEnum(byte messageType){
         this.messageType = messageType;
     }
 
