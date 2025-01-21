@@ -14,7 +14,7 @@ public class Runner {
             node.start();
             Scanner sc = new Scanner(System.in);
             boolean canStop = false;
-            String task = null;
+            String task = "2 + 100 + 8 + 14 + 51 + 85 + 654 + 985 + 69 + 14 + 20 + 0 + 27";
             while(!canStop){
                 System.out.println("1. Add task");
                 System.out.println("2. Solve task");

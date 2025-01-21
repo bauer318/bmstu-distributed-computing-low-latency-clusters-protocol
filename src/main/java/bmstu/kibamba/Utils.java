@@ -18,6 +18,13 @@ public class Utils {
         }
     }
 
+    public static PacketD deserializeD(byte[] data) throws IOException, ClassNotFoundException {
+        try(ByteArrayInputStream arrayInputStream = new ByteArrayInputStream(data);
+            ObjectInputStream objectInputStream = new ObjectInputStream(arrayInputStream)){
+            return (PacketD) objectInputStream.readObject();
+        }
+    }
+
     public static ProtocolPacket createUnsignedPacket(
             MessageTypeEnum messageType,
             String targetId,
@@ -30,12 +37,25 @@ public class Utils {
                 senderRole, null);
     }
 
+    public static PacketD createUnsignedPacketD(byte messageType, byte priority, byte senderRole,byte[] senderId, byte[] targetId,
+                                                byte[] payload){
+        return new PacketD(messageType,priority,senderRole,senderId,targetId,null,payload);
+    }
+
     public static byte[] packetToBytes(ProtocolPacket packet) throws IOException {
         ByteArrayOutputStream arrayOutputStream = new ByteArrayOutputStream();
         ObjectOutputStream objectOutputStream = new ObjectOutputStream(arrayOutputStream);
         objectOutputStream.writeObject(packet);
         return arrayOutputStream.toByteArray();
     }
+
+    public static byte[] packetToBytesD(PacketD packet) throws IOException {
+        ByteArrayOutputStream arrayOutputStream = new ByteArrayOutputStream();
+        ObjectOutputStream objectOutputStream = new ObjectOutputStream(arrayOutputStream);
+        objectOutputStream.writeObject(packet);
+        return arrayOutputStream.toByteArray();
+    }
+
 
     public static String resolvePacketTask(String packetTask){
         String[] packetTaskSplit = packetTask.split(",");
@@ -50,6 +70,14 @@ public class Utils {
         };
         result += ","+resultInt;
         return result;
+    }
+
+    public static String bytesToString(byte[] data){
+        return new String(data);
+    }
+
+    public static byte[] stringToBytes(String data){
+        return data.getBytes();
     }
 
     public static int getPortByNodeId(String nodeId){

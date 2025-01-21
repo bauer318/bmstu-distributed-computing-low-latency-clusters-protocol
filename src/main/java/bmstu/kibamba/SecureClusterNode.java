@@ -186,6 +186,13 @@ public class SecureClusterNode {
         atLeastOneTaskSentToResolve = false;
         if (trustedNodes.size() != 0) {
             for (String trustNodeId : trustedNodes.keySet()) {
+                //TODO only for test
+                if (it >= dividedTask.length) {
+                    it = dividedTask.length - 1;
+                }
+                if (it < 0) {
+                    it = 0;
+                }
                 String taskSent = dividedTask[it];
 
                 sendRequestResponse(this.clusterAddress, getPortByNodeId(trustNodeId), trustNodeId,
