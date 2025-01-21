@@ -12,4 +12,13 @@ public enum NodeRoleEnum {
     public byte  getNodeRole(){
         return nodeRole;
     }
+
+    public static NodeRoleEnum getByValue(byte value) {
+        for (NodeRoleEnum role : NodeRoleEnum.values()) {
+            if (role.nodeRole == value) {
+                return role;
+            }
+        }
+        throw new IllegalArgumentException("No NodeRoleEnum found for value: " + value);
+    }
 }

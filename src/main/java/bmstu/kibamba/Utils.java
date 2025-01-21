@@ -3,6 +3,7 @@ package bmstu.kibamba;
 import java.io.*;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Scanner;
 
 public class Utils {
     public static byte[] serialize(Object obj) throws IOException {
@@ -78,5 +79,72 @@ public class Utils {
         System.out.println("\t\t"+nodeId+" resolved the SIMULATED task with "+iter+" " +
                 "iterations for " +beginAt.until(LocalTime.now(), ChronoUnit.SECONDS)+" seconds");
     }
+
+    public static String arrange(String incomingTask){
+        return incomingTask.replaceAll("\\s","")
+                .replaceAll("\\+"," + ")
+                .replaceAll("-"," - ");
+    }
+
+    public static int changeNodePortIfPossible(NodeRoleEnum nodeRoleEnum, int port){
+        return nodeRoleEnum == NodeRoleEnum.COORDINATOR ? 5001 : port;
+    }
+
+    public static void doTaskMenuIfCoordinatorNode(NodeRoleEnum nodeRoleEnum,
+                                                   Scanner sc,
+                                                   SecureClusterNode node){
+        if (nodeRoleEnum == NodeRoleEnum.COORDINATOR) {
+            boolean canStop = false;
+            String task = "";
+            while (!canStop) {
+                System.out.println("0. Stop");
+                System.out.println("1. Add task");
+                System.out.println("2. Solve task");
+                String choose = sc.nextLine();
+                switch (choose) {
+                    case "1" -> {
+                        System.out.println("\tTask ");
+                        task = sc.nextLine();
+                    }
+                    case "2" -> {
+                        if (task != null && !task.isBlank()) {
+                            System.out.println("Task "+arrange(task));
+                            node.addTaskToResolve(arrange(task));
+                        }
+                    }
+                    case "0" -> canStop = true;
+                }
+            }
+        }
+    }
+
+    public static ClusterNodeParameter buildClusterNodeParameter(Scanner sc){
+        String nodeId = null;
+        int port = 0;
+        String clusterIp = null;
+        byte role = 2;
+        int argsNumber = 0;
+        String[] argsTitles = {"NodeId: ", "Port: ", "ClusterIP: ", "Role [0.Coordinator, 1.Worker]: "};
+        System.out.println("Build the cluster node");
+        while (argsNumber != 4) {
+            System.out.print(argsTitles[argsNumber]);
+            String input = sc.nextLine();
+            if (!input.isBlank()) {
+                switch (argsNumber) {
+                    case 0 -> nodeId = input;
+                    case 1 -> port = Integer.parseInt(input);
+                    case 2 -> clusterIp = input;
+                    case 3 -> role = Byte.parseByte(input);
+                }
+                argsNumber++;
+            }
+        }
+        return new ClusterNodeParameter(nodeId,port,clusterIp,role);
+    }
+
+    public static boolean canBuildNode(String nodeId, int port, String clusterIp, byte role) {
+        return !nodeId.isBlank() && port >= 5000 && !clusterIp.isBlank() && (role == 0 || role==1) ;
+    }
+
 
 }

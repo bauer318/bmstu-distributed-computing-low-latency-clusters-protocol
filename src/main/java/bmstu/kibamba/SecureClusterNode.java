@@ -217,11 +217,11 @@ public class SecureClusterNode {
     }
 
     private void distributeTask(String task) throws Exception {
-        String[] dividedTask = divideTask(task, trustedNodes.size());
-        int it = 0;
-        taskSentToResolve = 0;
-        atLeastOneTaskSentToResolve = false;
         if (trustedNodes.size() != 0) {
+            String[] dividedTask = divideTask(task, trustedNodes.size());
+            int it = 0;
+            taskSentToResolve = 0;
+            atLeastOneTaskSentToResolve = false;
             for (String trustNodeId : trustedNodes.keySet()) {
                 //TODO only for test
                 if (it >= dividedTask.length) {
