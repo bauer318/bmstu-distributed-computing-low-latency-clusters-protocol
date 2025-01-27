@@ -6,19 +6,21 @@ import java.time.temporal.ChronoUnit;
 import java.util.Scanner;
 
 public class Utils {
-    public static byte[] serialize(Object obj) throws IOException {
-        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(baos)) {
-            oos.writeObject(obj);
-            return baos.toByteArray();
-        }
+    public static byte[] serialize(Packet packet) throws IOException {
+//        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+//             ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+//            oos.writeObject(obj);
+//            return baos.toByteArray();
+//        }
+        return packet.toBytes();
     }
 
     public static Packet deserialize(byte[] data) throws IOException, ClassNotFoundException {
-        try (ByteArrayInputStream arrayInputStream = new ByteArrayInputStream(data);
-             ObjectInputStream objectInputStream = new ObjectInputStream(arrayInputStream)) {
-            return (Packet) objectInputStream.readObject();
-        }
+//        try (ByteArrayInputStream arrayInputStream = new ByteArrayInputStream(data);
+//             ObjectInputStream objectInputStream = new ObjectInputStream(arrayInputStream)) {
+//            return (Packet) objectInputStream.readObject();
+//        }
+        return Packet.fromBytes(data);
     }
 
     public static Packet createUnsignedPacket(byte messageType,
@@ -31,10 +33,11 @@ public class Utils {
     }
 
     public static byte[] packetToBytes(Packet packet) throws IOException {
-        ByteArrayOutputStream arrayOutputStream = new ByteArrayOutputStream();
-        ObjectOutputStream objectOutputStream = new ObjectOutputStream(arrayOutputStream);
-        objectOutputStream.writeObject(packet);
-        return arrayOutputStream.toByteArray();
+//        ByteArrayOutputStream arrayOutputStream = new ByteArrayOutputStream();
+//        ObjectOutputStream objectOutputStream = new ObjectOutputStream(arrayOutputStream);
+//        objectOutputStream.writeObject(packet);
+//        return arrayOutputStream.toByteArray();
+        return packet.toBytes();
     }
 
 

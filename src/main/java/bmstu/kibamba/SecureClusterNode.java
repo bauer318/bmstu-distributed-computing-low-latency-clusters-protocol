@@ -20,6 +20,11 @@ import static bmstu.kibamba.NodeTaskWorker.globalTask;
 import static bmstu.kibamba.Utils.*;
 
 public class SecureClusterNode {
+    private static final String KEY_MATERIAL = "DSA";
+    private static final String SIGNATURE_ALGORITHM = "SHA256withDSA";
+    private static final String COORDINATOR_NODE_ID = "node-1";
+    private static final int COORDINATOR_PORT = 5001;
+    private final int ACK_ATTEMPTS_NUMBER = 5;
     private final String nodeId;
     private final InetAddress clusterAddress;
     private final int port;
@@ -31,12 +36,11 @@ public class SecureClusterNode {
     private final Map<String, PublicKey> trustedNodes = new ConcurrentHashMap<>();
     private final Map<String, LocalTime> nodeHeartBeatSentTime = new ConcurrentHashMap<>();
     private final Map<String, LocalTime> nodeHeartBeatBackTime = new ConcurrentHashMap<>();
+    private final Map<String, Integer> nodeACKTrustRequest = new ConcurrentHashMap<>();
+    private final Map<String, Integer> nodeACKTrustResponse = new ConcurrentHashMap<>();
     private NodeStateEnum state;
     private LocalTime heartBeadSentAt;
     private static LocalTime taskResolutionBeginAt;
-
-    private static final String KEY_MATERIAL = "DSA";
-    private static final String SIGNATURE_ALGORITHM = "SHA256withDSA";
     private String taskToResolve;
     private static int taskSentToResolve;
     private static boolean atLeastOneTaskSentToResolve;
@@ -54,6 +58,7 @@ public class SecureClusterNode {
 
     public void start() {
         System.out.println("Secure Node " + nodeId + " started on port " + port + " cluster address " + clusterAddress);
+        doACKCheck();
         if (this.role != NodeRoleEnum.COORDINATOR) {
             try {
                 doHandShakeWithCoordinatorNode();
@@ -66,30 +71,113 @@ public class SecureClusterNode {
         Executors.newSingleThreadExecutor().execute(this::listenForPackets);
     }
 
+    private void doACKCheck() {
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+        Runnable task = () -> {
+            if (nodeACKTrustRequest.size() > 0 || nodeACKTrustResponse.size() > 0) {
+                System.out.println("Doing trust ack check: " + LocalTime.now());
+            }
+            checkACKResponses();
+        };
+        scheduleTask(scheduler, task, 25);
+    }
+
+    private void checkACKResponses() {
+        for (String nodeId : nodeACKTrustRequest.keySet()) {
+            try {
+                doHandShakeWithCoordinatorNode();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        for (String nodeId : nodeACKTrustResponse.keySet()) {
+            tryToResendTrustResponse(nodeId);
+        }
+    }
+
+    private void tryToResendTrustResponse(String nodeId) {
+        int currentValue = nodeACKTrustResponse.get(nodeId);
+        int targetPort = getPortByNodeId(nodeId);
+        if (currentValue <= ACK_ATTEMPTS_NUMBER) {
+            try {
+                System.out.println("resend trust response to " + nodeId);
+                String serializedPublicKey = serializePublicKey(keyPair.getPublic());
+                sendRequestResponse(
+                        this.clusterAddress,
+                        targetPort,
+                        stringToBytes(nodeId),
+                        stringToBytes(serializedPublicKey),
+                        MessageTypeEnum.TRUST_RESPONSE,
+                        (byte) 1);
+                nodeACKTrustResponse.replace(nodeId, currentValue + 1);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    private void scheduleTask(ScheduledExecutorService scheduler, Runnable task, int period) {
+        scheduler.scheduleAtFixedRate(task, 0, period, TimeUnit.SECONDS);
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Shutting down scheduler...");
+            scheduler.shutdown();
+            try {
+                if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                    System.out.println("Forcing scheduler shutdown...");
+                    scheduler.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                System.err.println("Scheduler interrupted: " + e.getMessage());
+                scheduler.shutdownNow();
+            }
+        }));
+    }
+
     private void doHandShakeWithCoordinatorNode() throws Exception {
         //Assume that all nodes are on unique cluster and
-        //the Coordinator's node port is 5001
-        sendTrustRequest(this.clusterAddress, 5001);
+        //the Coordinator's node port is 5001 and node id is node-1
+        if (nodeACKTrustRequest.containsKey(COORDINATOR_NODE_ID)) {
+            int currentValue = nodeACKTrustRequest.get(COORDINATOR_NODE_ID);
+            //Resend the trust request
+            if (currentValue <= ACK_ATTEMPTS_NUMBER) {
+                sendTrustRequest(this.clusterAddress, COORDINATOR_PORT);
+                currentValue++;
+                nodeACKTrustRequest.replace(COORDINATOR_NODE_ID, currentValue);
+            } else {
+                nodeACKTrustRequest.remove(COORDINATOR_NODE_ID);
+            }
+        } else {
+            int firstSendValue = 1;
+            sendTrustRequest(this.clusterAddress, COORDINATOR_PORT);
+            nodeACKTrustRequest.put(COORDINATOR_NODE_ID, firstSendValue);
+        }
     }
 
     private void listenForPackets() {
         //Buffer to receive incoming data
-        byte[] buffer = new byte[4096];
+        int bufferSize = 65508;
+        byte[] buffer = new byte[bufferSize];
         while (true) {
             try {
                 DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
                 socket.receive(datagramPacket);
 
                 Packet receivedPacketD = deserialize(datagramPacket.getData());
-                if (receivedPacketD.messageType() == MessageTypeEnum.TRUST_REQUEST.getMessageType()) {
+
+                if (receivedPacketD.getMessageType() == MessageTypeEnum.TRUST_REQUEST.getMessageType()) {
                     handleTrustRequest(receivedPacketD, datagramPacket.getAddress(), datagramPacket.getPort());
-                } else if (receivedPacketD.messageType() == MessageTypeEnum.TRUST_RESPONSE.getMessageType()) {
+                } else if (receivedPacketD.getMessageType() == MessageTypeEnum.TRUST_RESPONSE.getMessageType()) {
                     handleTrustResponse(receivedPacketD, datagramPacket.getAddress(), datagramPacket.getPort());
+                } else if (receivedPacketD.getMessageType() == TRUST_RQ_ACK.getMessageType()) {
+                    handleTrustACKRequest(receivedPacketD);
+
+                } else if (receivedPacketD.getMessageType() == TRUST_RP_ACK.getMessageType()) {
+                    handleTrustACKResponse(receivedPacketD);
                 } else if (verifyPacket(receivedPacketD)) {
                     handlePacket(receivedPacketD);
                 } else {
                     System.out.println("!!!!!!! Invalid packet signature from " +
-                            bytesToString(receivedPacketD.senderId()));
+                            bytesToString(receivedPacketD.getSenderId()));
                 }
 
             } catch (Exception e) {
@@ -100,44 +188,44 @@ public class SecureClusterNode {
 
     private void handleStateRequest(Packet packet, InetAddress senderAddress, int senderPort)
             throws Exception {
-        System.out.println("\tReceived STATE request from: " + bytesToString(packet.senderId()));
+        System.out.println("\tReceived STATE request from: " + bytesToString(packet.getSenderId()));
         sendRequestResponse(
                 senderAddress,
                 senderPort,
-                packet.senderId(),
+                packet.getSenderId(),
                 stringToBytes(state.toString()),
                 MessageTypeEnum.STATE_RESPONSE,
                 (byte) 1);
         System.out.println("\tRespond the state " + state.toString() + " to "
-                + bytesToString(packet.senderId()));
+                + bytesToString(packet.getSenderId()));
     }
 
     private void handleStateResponse(Packet packet) {
-        System.out.println("Received STATE response from: " + bytesToString(packet.senderId()));
-        System.out.println(bytesToString(packet.senderId()) + " STATE " + bytesToString(packet.payload()));
+        System.out.println("Received STATE response from: " + bytesToString(packet.getSenderId()));
+        System.out.println(bytesToString(packet.getSenderId()) + " STATE " + bytesToString(packet.getPayload()));
     }
 
     private void handleTaskRequest(Packet packet, InetAddress senderAddress, int senderPort)
             throws Exception {
-        System.out.println("\tReceived TASK request from: " + bytesToString(packet.senderId()));
+        System.out.println("\tReceived TASK request from: " + bytesToString(packet.getSenderId()));
         this.state = NodeStateEnum.BUSY;
-        String resolvedTask = resolveTask(bytesToString(packet.payload()));
+        String resolvedTask = resolveTask(bytesToString(packet.getPayload()));
         sendRequestResponse(
                 senderAddress,
                 senderPort,
-                packet.senderId(),
+                packet.getSenderId(),
                 stringToBytes(resolvedTask),
                 MessageTypeEnum.RESPONSE,
                 (byte) 0);
         simulateLongWorkByNode(nodeId);
         this.state = NodeStateEnum.FREE;
         System.out.println("\tResolved task " + resolvedTask + " sent to "
-                + bytesToString(packet.senderId()));
+                + bytesToString(packet.getSenderId()));
     }
 
     private void handleTaskResponse(Packet packet)
             throws Exception {
-        String taskResult = bytesToString(packet.payload());
+        String taskResult = bytesToString(packet.getPayload());
         if (taskResult.startsWith("r_")) {
             String[] taskResultSplit = taskResult.split(",");
             assert taskToResolve != null;
@@ -176,7 +264,7 @@ public class SecureClusterNode {
     private void doHeartBeatCheck() {
         ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
         Runnable task = () -> {
-            System.out.println("Doing heart beat check task at: " + LocalTime.now());
+            //System.out.println("Doing heart beat check task at: " + LocalTime.now());
             checkHeartBeatResponses();
             for (String trustNodeId : trustedNodes.keySet()) {
                 try {
@@ -186,20 +274,7 @@ public class SecureClusterNode {
                 }
             }
         };
-        scheduler.scheduleAtFixedRate(task, 0, 20, TimeUnit.SECONDS);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("Shutting down scheduler...");
-            scheduler.shutdown();
-            try {
-                if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                    System.out.println("Forcing scheduler shutdown...");
-                    scheduler.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                System.err.println("Scheduler interrupted: " + e.getMessage());
-                scheduler.shutdownNow();
-            }
-        }));
+        scheduleTask(scheduler, task, 20);
     }
 
     private void checkHeartBeatResponses() {
@@ -254,26 +329,26 @@ public class SecureClusterNode {
 
     private void handleHeartBeatRequest(Packet packet, InetAddress senderAddress, int senderPort)
             throws Exception {
-        System.out.println("\tReceived HEAR BEAT request from: " + bytesToString(packet.senderId()));
-        heartBeadSentAt = LocalTime.parse(bytesToString(packet.payload()));
+        System.out.println("\tReceived HEART BEAT request from: " + bytesToString(packet.getSenderId()));
+        heartBeadSentAt = LocalTime.parse(bytesToString(packet.getPayload()));
         LocalTime heartBeadRespondAt = LocalTime.now();
         sendRequestResponse(
                 senderAddress,
                 senderPort,
-                packet.senderId(),
+                packet.getSenderId(),
                 stringToBytes(String.valueOf(heartBeadSentAt.until(heartBeadRespondAt, ChronoUnit.SECONDS))),
                 HEARTBEAT_RESPONSE,
                 (byte) 0);
     }
 
     private void handleHeartBeatResponse(Packet packet, int senderPort) {
-        String senderNodeId = bytesToString(packet.senderId());
+        String senderNodeId = bytesToString(packet.getSenderId());
         System.out.println("Received HEAR BEAT response from: " + senderNodeId);
-        int diffTime = Integer.parseInt(bytesToString(packet.payload()));
+        int diffTime = Integer.parseInt(bytesToString(packet.getPayload()));
         nodeHeartBeatBackTime.replace(senderNodeId, LocalTime.now());
         if (diffTime > 15) {
             System.out.println("Remove the node " + senderPort);
-            trustedNodes.remove(bytesToString(packet.senderId()));
+            trustedNodes.remove(bytesToString(packet.getSenderId()));
         }
     }
 
@@ -294,25 +369,48 @@ public class SecureClusterNode {
 
     private void handleTrustRequest(Packet packet, InetAddress senderAddress, int senderPort)
             throws Exception {
-        System.out.println("\tReceived trust request from: " + bytesToString(packet.senderId()));
+        String senderId = bytesToString(packet.getSenderId());
+        System.out.println("\tReceived trust request from: " + senderId);
+        //Confirm the reception of trust request
+        sendRequestResponse(
+                senderAddress,
+                senderPort,
+                packet.getSenderId(),
+                null,
+                TRUST_RQ_ACK,
+                (byte) 0);
 
         // Extract the sender's public key from the payload
-        byte[] encodedKey = packet.payload();
+        byte[] encodedKey = packet.getPayload();
         PublicKey senderKey = deserializePublicKey(encodedKey);
 
         // Add the sender's key to the trustedNodes map
-        trustedNodes.put(bytesToString(packet.senderId()), senderKey);
-        System.out.println("\tAdded " + bytesToString(packet.senderId()) + " to trusted nodes.");
+        trustedNodes.put(bytesToString(packet.getSenderId()), senderKey);
+        System.out.println("\tAdded " + bytesToString(packet.getSenderId()) + " to trusted nodes.");
 
         //Respond the sender with the public key
         String serializedPublicKey = serializePublicKey(keyPair.getPublic());
         sendRequestResponse(
                 senderAddress,
                 senderPort,
-                packet.senderId(),
+                packet.getSenderId(),
                 stringToBytes(serializedPublicKey),
                 MessageTypeEnum.TRUST_RESPONSE,
                 (byte) 1);
+        int firstValue = 1;
+        nodeACKTrustResponse.put(senderId, firstValue);
+    }
+
+    private void handleTrustACKRequest(Packet packet) {
+        String senderId = bytesToString(packet.getSenderId());
+        System.out.println("Receiver " + senderId + " confirm the reception of trust request");
+        nodeACKTrustRequest.remove(senderId);
+    }
+
+    private void handleTrustACKResponse(Packet packet) {
+        String senderId = bytesToString(packet.getSenderId());
+        System.out.println("Receiver " + senderId + " confirm the reception of trust response");
+        nodeACKTrustResponse.remove(senderId);
     }
 
     public void sendTrustRequest(InetAddress targetAddress, int targetPort) throws Exception {
@@ -323,30 +421,39 @@ public class SecureClusterNode {
                         (byte) 0,
                         role.getNodeRole(),
                         stringToBytes(nodeId),
-                        stringToBytes("BROADCAST"),
+                        stringToBytes("node-1"),
                         stringToBytes(serializedPublicKey));
         sendPacket(trustRequest, targetAddress, targetPort);
     }
 
     private void handleTrustResponse(Packet packet, InetAddress senderAddress, int senderPort)
             throws Exception {
-        System.out.println("Received trust response from: " + bytesToString(packet.senderId()));
+        System.out.println("Received trust response from: " + bytesToString(packet.getSenderId()));
 
-        byte[] encodedKey = packet.payload();
+        byte[] encodedKey = packet.getPayload();
         PublicKey senderKey = deserializePublicKey(encodedKey);
 
         // Add the sender's key to the trustedNodes map
-        trustedNodes.put(bytesToString(packet.senderId()), senderKey);
-        System.out.println("Added " + bytesToString(packet.senderId()) + " to trusted nodes.");
+        trustedNodes.put(bytesToString(packet.getSenderId()), senderKey);
+        System.out.println("Added " + bytesToString(packet.getSenderId()) + " to trusted nodes.");
 
         // Send acknowledgment
+        sendRequestResponse(
+                senderAddress,
+                senderPort,
+                packet.getSenderId(),
+                null,
+                TRUST_RP_ACK,
+                (byte) 1);
+
+        //Connexion established
         Packet responsePacket =
                 createUnsignedPacket(
-                        MessageTypeEnum.ACK.getMessageType(),
+                        MessageTypeEnum.TRUST_CON.getMessageType(),
                         (byte) 0,
                         role.getNodeRole(),
                         stringToBytes(nodeId),
-                        packet.senderId(),
+                        packet.getSenderId(),
                         stringToBytes("Trust established"));
         sendPacket(responsePacket, senderAddress, senderPort);
     }
@@ -355,13 +462,13 @@ public class SecureClusterNode {
         System.out.println("Secure Node " + nodeId + " received valid packet: " + packet);
         if (isAuthorized(packet)) {
             System.out.println("Packet authorized: " + packet);
-            switch (MessageTypeEnum.getByValue(packet.messageType())) {
+            switch (MessageTypeEnum.getByValue(packet.getMessageType())) {
                 case TASK -> {
                     if (role == NodeRoleEnum.WORKER) {
                         handleTaskRequest(
                                 packet,
                                 clusterAddress,
-                                getPortByNodeId(bytesToString(packet.senderId())));
+                                getPortByNodeId(bytesToString(packet.getSenderId())));
                     }
                 }
                 case RESPONSE -> {
@@ -372,28 +479,29 @@ public class SecureClusterNode {
                 case HEARTBEAT_REQUEST -> handleHeartBeatRequest(
                         packet,
                         clusterAddress,
-                        getPortByNodeId(bytesToString(packet.senderId())));
+                        getPortByNodeId(bytesToString(packet.getSenderId())));
                 case HEARTBEAT_RESPONSE -> handleHeartBeatResponse(
                         packet,
-                        getPortByNodeId(bytesToString(packet.senderId())));
+                        getPortByNodeId(bytesToString(packet.getSenderId())));
                 case STATE_REQUEST -> handleStateRequest(packet, clusterAddress,
-                        getPortByNodeId(bytesToString(packet.senderId())));
+                        getPortByNodeId(bytesToString(packet.getSenderId())));
                 case STATE_RESPONSE -> handleStateResponse(packet);
             }
         } else {
-            System.out.println("Unauthorized action attempted by: " + bytesToString(packet.senderId()));
+            System.out.println("Unauthorized action attempted by: " + bytesToString(packet.getSenderId()));
         }
     }
 
     private boolean isAuthorized(Packet packet) {
         // RBAC: Only "Coordinator" can send TASK packets
-        return MessageTypeEnum.getByValue(packet.messageType()) != TASK ||
-                packet.nodeRole() == NodeRoleEnum.COORDINATOR.getNodeRole();
+        return MessageTypeEnum.getByValue(packet.getMessageType()) != TASK ||
+                packet.getNodeRole() == NodeRoleEnum.COORDINATOR.getNodeRole();
     }
 
     private KeyPair generateKeyPair() throws Exception {
+        int keySize = 1024;
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance(KEY_MATERIAL);
-        keyGen.initialize(1024);
+        keyGen.initialize(keySize);
         return keyGen.generateKeyPair();
     }
 
@@ -442,7 +550,7 @@ public class SecureClusterNode {
     }
 
     private boolean verifyPacket(Packet packet) throws Exception {
-        PublicKey senderPublicKey = trustedNodes.get(bytesToString(packet.senderId()));
+        PublicKey senderPublicKey = trustedNodes.get(bytesToString(packet.getSenderId()));
 
         if (senderPublicKey == null) {
             return false;
@@ -451,16 +559,16 @@ public class SecureClusterNode {
         Signature signature = Signature.getInstance(SIGNATURE_ALGORITHM);
         signature.initVerify(senderPublicKey);
         Packet packetWithoutSignature = new Packet(
-                packet.messageType(),
-                packet.priority(),
-                packet.nodeRole(),
-                packet.senderId(),
-                packet.targetId(),
+                packet.getMessageType(),
+                packet.getPriority(),
+                packet.getNodeRole(),
+                packet.getSenderId(),
+                packet.getTargetId(),
                 null,
-                packet.payload());
+                packet.getPayload());
         byte[] packetToByte = packetToBytes(packetWithoutSignature);
         signature.update(packetToByte);
-        String encodedPacketSignature = bytesToString(packet.signature());
+        String encodedPacketSignature = bytesToString(packet.getSignature());
         byte[] decodedPacketSignature = Base64.getDecoder().decode(encodedPacketSignature);
         return signature.verify(decodedPacketSignature);
     }
@@ -468,16 +576,16 @@ public class SecureClusterNode {
     private void sendPacket(Packet packet, InetAddress targetAddress, int targetPort)
             throws Exception {
         //Sign the packet
-        String signature = signPacket(packet.messageType(),
-                packet.targetId(), packet.priority(), packet.payload());
+        String signature = signPacket(packet.getMessageType(),
+                packet.getTargetId(), packet.getPriority(), packet.getPayload());
         Packet signedPacket = new Packet(
-                packet.messageType(),
-                packet.priority(),
-                packet.nodeRole(),
-                packet.senderId(),
-                packet.targetId(),
+                packet.getMessageType(),
+                packet.getPriority(),
+                packet.getNodeRole(),
+                packet.getSenderId(),
+                packet.getTargetId(),
                 stringToBytes(signature),
-                packet.payload()
+                packet.getPayload()
         );
 
         // Serialize the packet into bytes

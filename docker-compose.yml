@@ -4,27 +4,29 @@ services:
   node-1:
     build: .
     container_name: node-1
+    stdin_open: true
+    tty: true
     ports:
       - "5001:5001"
-    command: ["java", "-cp", "app.jar", "bmstu.kibamba.Runner", "Node-1", "5001", "127.0.0.1", "Coordinator"]
+    command: ["java", "-cp", "app.jar", "bmstu.kibamba.Runner", "node-1", "5001", "127.0.0.1", "Coordinator"]
 
   node-2:
     build: .
     container_name: node-2
     ports:
       - "5002:5002"
-    command: ["java", "-cp", "app.jar", "bmstu.kibamba.Runner", "Node-2", "5002", "127.0.0.1", "Worker"]
+    command: ["java", "-cp", "app.jar", "bmstu.kibamba.Runner", "node-2", "5002", "127.0.0.1", "Worker"]
 
   node-3:
     build: .
     container_name: node-3
     ports:
       - "5003:5003"
-    command: ["java", "-cp", "app.jar", "bmstu.kibamba.Runner", "Node-3", "5003", "127.0.0.1", "Worker"]
+    command: ["java", "-cp", "app.jar", "bmstu.kibamba.Runner", "node-3", "5003", "127.0.0.1", "Worker"]
 
   node-4:
     build: .
     container_name: node-4
     ports:
       - "5004:5004"
-    command: ["java", "-cp", "app.jar", "bmstu.kibamba.Runner", "Node-4", "5004", "127.0.0.1", "Monitor"]
+    command: ["java", "-cp", "app.jar", "bmstu.kibamba.Runner", "node-4", "5004", "127.0.0.1", "Monitor"]
